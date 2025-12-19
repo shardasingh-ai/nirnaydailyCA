@@ -1,0 +1,4 @@
+streamlit
+markdown
+beautifulsoup4
+playwright
