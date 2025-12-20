@@ -16,22 +16,20 @@ st.set_page_config(page_title="Nirnay MD → HTML/PDF", layout="centered")
 
 
 # ============================================================
-# 1) STANDARD CSS (updated to support new 10 headers + image safety + sharp print)
+# CSS (A4, 2 columns, section boxes, image-safe)
 # ============================================================
 STANDARD_CSS = r"""
-@page { size: A4; margin: 10mm 9mm; }   /* per-page margins (page 2+ safe) */
-body { margin: 0; }
-html, body { height: 100%; }
-
-.page { padding: 0; }                  /* default */
-@media screen { .page { padding: 10mm 9mm; } }  /* screen-only padding */
-
+@page { size: A4; margin: 10mm 9mm; }     /* page 2+ margins */
+html, body { margin: 0; padding: 0; }
 body{
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   color: #0f2433;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
 }
+
+.page { padding: 0; }
+@media screen { .page { padding: 10mm 9mm; } }
 
 .book{ width: 100%; }
 
@@ -48,27 +46,11 @@ body{
 .prose p{ margin: 0 0 8px 0; }
 .prose strong{ font-weight: 800; }
 
-/* ---------- Image safety (NO overlap, avoid blur) ---------- */
-.prose img{
-  max-width: 100% !important;
-  height: auto !important;
-  display: block;
-  margin: 8px 0 10px 0;
-  border-radius: 10px;
-  width: auto; /* do NOT upscale small images */
-}
-
-.prose img, .prose figure{
-  break-inside: avoid;
-  page-break-inside: avoid;
-}
-
-/* Print stability: avoid forced blank pages */
+/* Print stability */
 @media print{
   html, body { height: auto !important; }
   .page, .book, .prose { height: auto !important; min-height: auto !important; }
-  .prose > *:last-child { margin-bottom: 0 !important; break-after: auto !important; page-break-after: auto !important; }
-  h1 { break-after: avoid-page; page-break-after: avoid; }
+  .prose > *:last-child { margin-bottom: 0 !important; break-after: auto !important; }
 }
 
 /* ---------- H1 ribbon ---------- */
@@ -78,6 +60,7 @@ body{
   margin: 0 0 18px 0;
   padding: 26px 20px;
   min-height: 104px;
+
   display:flex;
   align-items:center;
   justify-content:center;
@@ -97,7 +80,7 @@ body{
   box-shadow: 0 12px 26px rgba(15,36,51,.12);
 }
 
-/* ---------- Default headings ---------- */
+/* Default headings */
 .prose h2{
   column-span: none !important;
   -webkit-column-span: none !important;
@@ -118,7 +101,7 @@ body{
 .prose h5{ margin: 9px 0 6px 0; font-weight: 900; }
 .prose h6{ margin: 9px 0 6px 0; font-weight: 900; }
 
-/* ---------- Topic titles: strong differentiator ---------- */
+/* Topic title styling */
 .prose h2.topic-title{
   padding: 16px 14px 14px 16px !important;
   margin: 14px 0 12px 0 !important;
@@ -159,19 +142,38 @@ body{
   border-radius: 999px;
 }
 
-/* ---------- Lists ---------- */
+/* Lists */
 .prose ul{ margin: 6px 0 8px 0; padding-left: 16px; }
 .prose li{ margin: 4px 0; }
 .prose li::marker{ color: rgba(15,36,51,.55); }
 
-.prose hr{
-  border: none;
-  height: 1px;
-  background: rgba(15,36,51,.18);
-  margin: 18px 0;
+/* ---------- Images: no overlap, no distortion ---------- */
+.md-figure{
+  margin: 10px 0 12px 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.65);
+  border: 1px solid rgba(15,36,51,.10);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.md-figure img{
+  display:block;
+  max-width: 100% !important;
+  height: auto !important;
+  object-fit: contain;
+  border-radius: 10px;
+  margin: 0 auto;
+
+  /* Prevent “stretching” from odd inline styles */
+  width: 100%;
+}
+.md-figure img[data-natural="small"]{
+  width: auto !important;          /* don’t upscale tiny images */
+  max-width: 100% !important;
 }
 
-/* ---------- Premium palette ---------- */
+/* ---------- Color palette ---------- */
 :root{
   --blue-bg:  rgba(43,106,164,.10);
   --blue-bar: rgba(43,106,164,.80);
@@ -198,7 +200,6 @@ body{
   --sky-top: rgba(40,120,160,.35);
 }
 
-/* ---------- Section Boxes ---------- */
 .colorbox{
   padding: 10px 12px;
   border-radius: 16px;
@@ -210,59 +211,26 @@ body{
 
   print-color-adjust: exact;
   -webkit-print-color-adjust: exact;
-
   background-image: radial-gradient(rgba(255,255,255,.35) 1px, transparent 1px);
   background-size: 18px 18px;
 }
 .colorbox + .colorbox{ margin-top: 12px !important; }
 
-/* Syllabus & Context: keep left accent */
+/* Section 1 & 2: left accent */
 .colorbox.syllabus, .colorbox.context{
   background-color: var(--blue-bg) !important;
   border-left: 10px solid var(--blue-bar) !important;
 }
 
-/* Others: shaded only (no dark margin) */
-.colorbox.analysis{
-  background-color: var(--teal-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--teal-top) !important;
-}
-.colorbox.beyond{
-  background-color: var(--green-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--green-top) !important;
-}
-.colorbox.wayforward{
-  background-color: var(--green-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--green-top) !important;
-}
-.colorbox.prelims{
-  background-color: var(--amber-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--amber-top) !important;
-}
-.colorbox.exercise{
-  background-color: var(--rose-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--rose-top) !important;
-}
-.colorbox.mains{
-  background-color: var(--violet-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--violet-top) !important;
-}
-.colorbox.recall{
-  background-color: var(--slate-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--slate-top) !important;
-}
-.colorbox.recap{
-  background-color: var(--sky-bg) !important;
-  border-left: 0 !important;
-  border-top: 6px solid var(--sky-top) !important;
-}
+/* Other sections: shaded only */
+.colorbox.analysis{   background-color: var(--teal-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--teal-top) !important; }
+.colorbox.beyond{     background-color: var(--green-bg) !important; border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
+.colorbox.wayforward{ background-color: var(--green-bg) !important; border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
+.colorbox.prelims{    background-color: var(--amber-bg) !important; border-left: 0 !important; border-top: 6px solid var(--amber-top) !important; }
+.colorbox.exercise{   background-color: var(--rose-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--rose-top) !important; }
+.colorbox.mains{      background-color: var(--violet-bg) !important;border-left: 0 !important; border-top: 6px solid var(--violet-top) !important; }
+.colorbox.recall{     background-color: var(--slate-bg) !important; border-left: 0 !important; border-top: 6px solid var(--slate-top) !important; }
+.colorbox.recap{      background-color: var(--sky-bg) !important;   border-left: 0 !important; border-top: 6px solid var(--sky-top) !important; }
 
 /* Heading chips inside boxes */
 .colorbox > h2, .colorbox > h3, .colorbox > h4, .colorbox > h5, .colorbox > h6{
@@ -274,34 +242,6 @@ body{
   background: rgba(255,255,255,.60);
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.40);
   font-weight: 950;
-}
-
-/* Subtle tint per section */
-.colorbox.syllabus > h2, .colorbox.syllabus > h3, .colorbox.syllabus > h4,
-.colorbox.context  > h2, .colorbox.context  > h3, .colorbox.context  > h4{
-  background: rgba(43,106,164,.14) !important;
-}
-.colorbox.analysis > h2, .colorbox.analysis > h3, .colorbox.analysis > h4{
-  background: rgba(0,128,128,.14) !important;
-}
-.colorbox.beyond > h2, .colorbox.beyond > h3, .colorbox.beyond > h4,
-.colorbox.wayforward > h2, .colorbox.wayforward > h3, .colorbox.wayforward > h4{
-  background: rgba(47,125,74,.14) !important;
-}
-.colorbox.prelims > h2, .colorbox.prelims > h3, .colorbox.prelims > h4, .colorbox.prelims > h5{
-  background: rgba(176,106,0,.15) !important;
-}
-.colorbox.exercise > h2, .colorbox.exercise > h3, .colorbox.exercise > h4{
-  background: rgba(166,53,92,.14) !important;
-}
-.colorbox.mains > h2, .colorbox.mains > h3, .colorbox.mains > h4, .colorbox.mains > h5, .colorbox.mains > h6{
-  background: rgba(92,56,181,.14) !important;
-}
-.colorbox.recall > h2, .colorbox.recall > h3, .colorbox.recall > h4{
-  background: rgba(70,80,95,.14) !important;
-}
-.colorbox.recap > h2, .colorbox.recap > h3, .colorbox.recap > h4{
-  background: rgba(40,120,160,.14) !important;
 }
 
 /* ---------- Splittable table ---------- */
@@ -337,7 +277,7 @@ body{
 
 
 # ============================================================
-# 2) Playwright setup (Streamlit Cloud)
+# Playwright setup (Streamlit Cloud)
 # ============================================================
 @st.cache_resource
 def ensure_playwright_chromium():
@@ -345,14 +285,29 @@ def ensure_playwright_chromium():
 
 
 # ============================================================
-# 3) Markdown → HTML (adaptive to new 10 headers)
+# Markdown cleanup (REMOVE heading codes {#...} robustly)
 # ============================================================
-def cleanup_markdown(md: str) -> str:
-    md = re.sub(r"(?m)^\s*#{1,6}\s*$\n?", "", md)  # remove empty headings
-    md = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|>~])", r"\1", md)  # unescape punctuation
+HEADING_ATTR_TRAILING_RE = re.compile(r"\s*\{[^{}]*\}\s*$")  # {...} at end
+HEADING_ATTR_ANYWHERE_RE = re.compile(r"\s*\{[#:.][^{}]*\}\s*")  # {#id} or {:.class}
 
-    # ensure blank line after table row if next line is a heading
-    lines = md.splitlines()
+def cleanup_markdown(md_text: str) -> str:
+    md_text = re.sub(r"(?m)^\s*#{1,6}\s*$\n?", "", md_text)
+
+    # Remove attribute blocks appended to headings (robust)
+    # Examples:
+    # ## Title {#id}
+    # ## Title {:.class}
+    # ## Title {#id .class}
+    md_text = re.sub(r"(?m)^(#{1,6}\s+.*?)(\s*\{[^{}]*\})\s*$", r"\1", md_text)
+
+    # Also remove common attribute blocks after headings anywhere
+    md_text = re.sub(r"(?m)^(#{1,6}\s+.*?)(\s*\{[#:.][^{}]*\})\s*$", r"\1", md_text)
+
+    # Unescape punctuation
+    md_text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|>~])", r"\1", md_text)
+
+    # Ensure blank line after a table row if next line is a heading
+    lines = md_text.splitlines()
     out = []
     for i, line in enumerate(lines):
         out.append(line)
@@ -363,21 +318,38 @@ def cleanup_markdown(md: str) -> str:
                     out.append("")
     return "\n".join(out)
 
-def heading_text(h) -> str:
-    return re.sub(r"\s+", " ", h.get_text(" ", strip=True)).strip()
 
-def is_heading(node) -> bool:
-    return getattr(node, "name", None) in ("h1", "h2", "h3", "h4", "h5", "h6")
+def heading_text(tag) -> str:
+    return re.sub(r"\s+", " ", tag.get_text(" ", strip=True)).strip()
+
+
+def strip_heading_codes(text: str) -> str:
+    """
+    Remove any leftover markdown attribute codes from headings.
+    Works even if they appear not strictly at end.
+    """
+    if not text:
+        return ""
+    t = re.sub(r"\s+", " ", text).strip()
+    # Remove patterns like {#id}, {:.class}, {#id .cls}
+    t = re.sub(r"\{[#:.][^{}]*\}", "", t).strip()
+    # Remove any remaining {...} at the end (fallback)
+    t = re.sub(r"\s*\{[^{}]*\}\s*$", "", t).strip()
+    return t
+
 
 def normalize_heading(s: str) -> str:
     s = re.sub(r"\s+", " ", (s or "").strip())
-    s = re.sub(r"^\(?\s*(\d{1,2}|[ivxlcdm]{1,6})\s*[\.\)\:\-]\s*", "", s, flags=re.I)
+    s = strip_heading_codes(s)
+    # Remove leading numbering like "1.", "1)", "(1)", "01.", "I." etc.
+    s = re.sub(r"^\(?\s*(\d{1,2}|[ivxlcdm]{1,8})\s*[\.\)\:\-]\s*", "", s, flags=re.I)
     return s.strip().lower()
+
 
 def classify_section(title: str) -> str | None:
     t = normalize_heading(title)
 
-    # Your new standard headers (robust keyword matching)
+    # Your new standard headers (1..10)
     if "syllabus mapping" in t:
         return "syllabus"
     if "the context" in t or "why in news" in t:
@@ -400,10 +372,14 @@ def classify_section(title: str) -> str | None:
         return "recap"
     return None
 
-def is_topic_title_tag(h) -> bool:
-    # Treat H2 as topic title if it is NOT one of the known section headings
+
+def is_topic_title(h) -> bool:
     return h.name == "h2" and heading_text(h) != "" and classify_section(heading_text(h)) is None
 
+
+# ============================================================
+# Tables -> gridtables
+# ============================================================
 def tables_to_gridtables(soup: BeautifulSoup) -> None:
     def append_fragment(tag, fragment_html: str):
         frag = BeautifulSoup(fragment_html or "", "html.parser")
@@ -449,13 +425,50 @@ def tables_to_gridtables(soup: BeautifulSoup) -> None:
 
         tbl.replace_with(gt)
 
+
+# ============================================================
+# Images normalization (remove style/size attrs + wrap)
+# ============================================================
+def normalize_images(soup: BeautifulSoup) -> None:
+    for img in soup.find_all("img"):
+        # Remove attributes that commonly break 2-column layout
+        for attr in ("width", "height", "style"):
+            if img.has_attr(attr):
+                del img[attr]
+
+        # Mark tiny images so we don't upscale them in CSS
+        # (If width/height were removed we infer by filename/alt? fallback to none.)
+        # We'll set data-natural="small" later if we detect tiny rendered size is unknown.
+        # For now: if alt suggests "icon" or "logo", treat as small.
+        alt = (img.get("alt") or "").lower()
+        if any(k in alt for k in ["icon", "logo", "emoji", "small"]):
+            img["data-natural"] = "small"
+
+        # Wrap in figure
+        if not (img.parent and img.parent.name == "figure"):
+            fig = soup.new_tag("figure", **{"class": "md-figure"})
+            img.wrap(fig)
+
+
+# ============================================================
+# Wrap sections + topic tagging + heading code stripping (HTML stage)
+# ============================================================
 def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
+    # Strip codes from headings in HTML stage (most important fix)
+    for h in soup.find_all(["h1","h2","h3","h4","h5","h6"]):
+        cleaned = strip_heading_codes(heading_text(h))
+        h.clear()
+        h.append(cleaned)
+
     # Tag topic titles
     for h2 in soup.find_all("h2"):
-        if is_topic_title_tag(h2):
+        if is_topic_title(h2):
             h2["class"] = (h2.get("class", []) + ["topic-title"])
 
-    headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+    headings = soup.find_all(["h1","h2","h3","h4","h5","h6"])
+
+    def is_heading(node) -> bool:
+        return getattr(node, "name", None) in ("h1","h2","h3","h4","h5","h6")
 
     def already_in_box(h):
         return h.find_parent(class_="colorbox") is not None
@@ -469,7 +482,6 @@ def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
     def wrap_from(start_h, class_name: str):
         if already_in_box(start_h):
             return
-
         box = soup.new_tag("div", **{"class": f"colorbox {class_name}"})
         start_h.insert_before(box)
 
@@ -493,17 +505,24 @@ def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
         if cls:
             wrap_from(h, cls)
 
+
+# ============================================================
+# MD -> full HTML
+# ============================================================
 def md_to_full_html(md_text: str, title_fallback: str) -> str:
     md_text = cleanup_markdown(md_text)
-    body = mdlib.markdown(md_text, extensions=["tables"])
-    body = re.sub(r"<p>\s*######\s*</p>\s*", "", body, flags=re.I)
 
-    soup = BeautifulSoup(body, "html.parser")
+    # Markdown -> HTML
+    body_html = mdlib.markdown(md_text, extensions=["tables"])
+    soup = BeautifulSoup(body_html, "html.parser")
+
+    # Post processing
     tables_to_gridtables(soup)
     wrap_sections_and_tag_topics(soup)
+    normalize_images(soup)
 
     h1 = soup.find("h1")
-    doc_title = h1.get_text(" ", strip=True).upper() if h1 else title_fallback.upper()
+    doc_title = (h1.get_text(" ", strip=True).upper() if h1 else title_fallback.upper())
 
     return f"""<!doctype html>
 <html>
@@ -527,7 +546,7 @@ def md_to_full_html(md_text: str, title_fallback: str) -> str:
 
 
 # ============================================================
-# 4) HTML → PDF bytes (Playwright) — sharper output
+# HTML -> PDF bytes (Playwright)
 # ============================================================
 def html_to_pdf_bytes(full_html: str) -> bytes:
     from playwright.sync_api import sync_playwright
@@ -539,7 +558,7 @@ def html_to_pdf_bytes(full_html: str) -> bytes:
 
         with sync_playwright() as p:
             browser = p.chromium.launch()
-            context = browser.new_context(device_scale_factor=2)  # sharper images/text
+            context = browser.new_context(device_scale_factor=2)  # sharp
             page = context.new_page()
             page.goto(html_path.as_uri(), wait_until="networkidle")
             page.emulate_media(media="print")
@@ -547,8 +566,8 @@ def html_to_pdf_bytes(full_html: str) -> bytes:
             pdf_bytes = page.pdf(
                 format="A4",
                 print_background=True,
-                margin={"top": "10mm", "bottom": "10mm", "left": "9mm", "right": "9mm"},
                 prefer_css_page_size=True,
+                margin={"top": "10mm", "bottom": "10mm", "left": "9mm", "right": "9mm"},
             )
             browser.close()
 
@@ -556,7 +575,7 @@ def html_to_pdf_bytes(full_html: str) -> bytes:
 
 
 # ============================================================
-# 5) UI
+# UI
 # ============================================================
 st.title("Nirnay Daily CA — Markdown to HTML + PDF")
 st.caption("Upload a .md file → get consistent Nirnay 2-column HTML and PDF downloads.")
