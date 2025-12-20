@@ -1,11 +1,11 @@
 import re
 import sys
+import base64
 import tempfile
 import subprocess
 from pathlib import Path
 
 import streamlit as st
-import markdown as mdlib
 from bs4 import BeautifulSoup
 
 
@@ -16,7 +16,51 @@ st.set_page_config(page_title="Nirnay MD → HTML/PDF", layout="centered")
 
 
 # ============================================================
-# CSS (A4, SINGLE COLUMN, page breaks, image-safe)
+# 0) Markdown renderer (robust import fallbacks)
+#    - Works even if `markdown` package is missing.
+#    - Supports tables when possible.
+# ============================================================
+def render_markdown(md_text: str) -> str:
+    # Try python-markdown
+    try:
+        import markdown as mdlib  # pip: markdown
+        return mdlib.markdown(
+            md_text,
+            extensions=[
+                "tables",
+                "fenced_code",
+                "sane_lists",
+                "smarty",
+                "toc",
+            ],
+        )
+    except Exception:
+        pass
+
+    # Try markdown2
+    try:
+        import markdown2  # pip: markdown2
+        return markdown2.markdown(md_text, extras=["tables", "fenced-code-blocks"])
+    except Exception:
+        pass
+
+    # Try mistune
+    try:
+        import mistune  # pip: mistune
+        md = mistune.create_markdown(plugins=["table", "strikethrough", "task_lists"])
+        return md(md_text)
+    except Exception:
+        # Last resort: very minimal (paragraphs only)
+        escaped = (
+            md_text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+        return "<pre>" + escaped + "</pre>"
+
+
+# ============================================================
+# 1) STANDARD CSS (Single column, print-safe margins, clean images)
 # ============================================================
 STANDARD_CSS = r"""
 @page { size: A4; margin: 10mm 9mm; }
@@ -28,32 +72,31 @@ body{
   -webkit-font-smoothing: antialiased;
 }
 
+/* Screen padding only (print uses @page margin) */
 .page { padding: 0; }
 @media screen { .page { padding: 10mm 9mm; } }
 
 .book{ width: 100%; }
 
-/* SINGLE COLUMN */
+/* SINGLE COLUMN PROSE */
 .prose{
-  font-size: 12.6px;
-  line-height: 1.6;
+  font-size: 12.8px;
+  line-height: 1.62;
 }
 .prose *{ box-sizing: border-box; }
 .prose p{ margin: 0 0 9px 0; }
 .prose strong{ font-weight: 800; }
 
-/* Print stability */
+/* Avoid random extra blank pages (don’t force heights) */
 @media print{
   html, body { height: auto !important; }
   .page, .book, .prose { height: auto !important; min-height: auto !important; }
 }
 
-/* ---------- H1 ribbon ---------- */
+/* -------- H1 (main banner) -------- */
 .prose h1{
   margin: 0 0 16px 0;
-  padding: 24px 18px;
-  min-height: 98px;
-
+  padding: 22px 18px;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -65,12 +108,15 @@ body{
   border-radius: 16px;
 
   font-weight: 950;
-  letter-spacing: .12em;
+  letter-spacing: .10em;
   text-transform: uppercase;
-  font-size: 32px;
-  line-height: 1.12;
+  font-size: 30px;
+  line-height: 1.10;
 
   box-shadow: 0 12px 26px rgba(15,36,51,.12);
+
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
 /* Default headings */
@@ -92,13 +138,10 @@ body{
 .prose h5{ margin: 9px 0 6px 0; font-weight: 900; }
 .prose h6{ margin: 9px 0 6px 0; font-weight: 900; }
 
-/* ---------- Topic title: make smaller + page break before ---------- */
+/* -------- Topic title differentiator (smaller to avoid overpowering) -------- */
 .prose h2.topic-title{
-  page-break-before: always;
-  break-before: page;
-
   padding: 12px 12px 12px 14px !important;
-  margin: 0 0 12px 0 !important;
+  margin: 10px 0 12px 0 !important;
 
   border-radius: 16px !important;
   border: 1px solid rgba(15,36,51,.12) !important;
@@ -108,9 +151,12 @@ body{
 
   border-left: 0 !important;
   font-weight: 950 !important;
-  font-size: 16px !important;      /* reduced */
+  font-size: 16px !important;
   line-height: 1.24 !important;
   position: relative;
+
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 .prose h2.topic-title::before{
   content: "TOPIC";
@@ -142,31 +188,40 @@ body{
 .prose li{ margin: 4px 0; }
 .prose li::marker{ color: rgba(15,36,51,.55); }
 
-/* ---------- Images: clean + no distortion ---------- */
+/* ---- Images: NO UPSCALING, NO DISTORTION ---- */
 .md-figure{
   margin: 10px 0 12px 0;
   padding: 10px;
   border-radius: 14px;
   background: rgba(255,255,255,.70);
   border: 1px solid rgba(15,36,51,.10);
+
   page-break-inside: avoid;
   break-inside: avoid;
+
+  display: flex;
+  justify-content: center;   /* center smaller images */
 }
 .md-figure img{
   display:block;
-  max-width: 100% !important;
-  width: 100% !important;
-  height: auto !important;
-  object-fit: contain;
+  max-width: 100% !important; /* prevents overflow */
+  width: auto !important;     /* prevents upscaling (main blur cause) */
+  height: auto !important;    /* preserves aspect ratio */
   border-radius: 10px;
-  margin: 0 auto;
-}
-.md-figure img[data-natural="small"]{
-  width: auto !important;
-  max-width: 100% !important;
+
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
 }
 
-/* ---------- Color palette ---------- */
+/* Horizontal rule */
+.prose hr{
+  border: none;
+  height: 1px;
+  background: rgba(15,36,51,.18);
+  margin: 18px 0;
+}
+
+/* -------- Color palette -------- */
 :root{
   --blue-bg:  rgba(43,106,164,.10);
   --blue-bar: rgba(43,106,164,.80);
@@ -180,11 +235,11 @@ body{
   --amber-bg: rgba(176,106,0,.11);
   --amber-top: rgba(176,106,0,.35);
 
-  --violet-bg: rgba(92,56,181,.10);
-  --violet-top: rgba(92,56,181,.35);
-
   --rose-bg: rgba(166,53,92,.10);
   --rose-top: rgba(166,53,92,.35);
+
+  --violet-bg: rgba(92,56,181,.10);
+  --violet-top: rgba(92,56,181,.35);
 
   --slate-bg: rgba(70,80,95,.10);
   --slate-top: rgba(70,80,95,.35);
@@ -207,20 +262,26 @@ body{
 
   background-image: radial-gradient(rgba(255,255,255,.35) 1px, transparent 1px);
   background-size: 18px 18px;
+
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 
+/* 1,2 keep left accent */
 .colorbox.syllabus, .colorbox.context{
   background-color: var(--blue-bg) !important;
   border-left: 10px solid var(--blue-bar) !important;
 }
-.colorbox.analysis{   background-color: var(--teal-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--teal-top) !important; }
-.colorbox.beyond{     background-color: var(--green-bg) !important; border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
-.colorbox.wayforward{ background-color: var(--green-bg) !important; border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
-.colorbox.prelims{    background-color: var(--amber-bg) !important; border-left: 0 !important; border-top: 6px solid var(--amber-top) !important; }
-.colorbox.exercise{   background-color: var(--rose-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--rose-top) !important; }
-.colorbox.mains{      background-color: var(--violet-bg) !important;border-left: 0 !important; border-top: 6px solid var(--violet-top) !important; }
-.colorbox.recall{     background-color: var(--slate-bg) !important; border-left: 0 !important; border-top: 6px solid var(--slate-top) !important; }
-.colorbox.recap{      background-color: var(--sky-bg) !important;   border-left: 0 !important; border-top: 6px solid var(--sky-top) !important; }
+
+/* 3-10 shaded only (no dark margin bars) */
+.colorbox.analysis{   background-color: var(--teal-bg) !important;   border-left: 0 !important; border-top: 6px solid var(--teal-top) !important; }
+.colorbox.beyond{     background-color: var(--green-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
+.colorbox.wayforward{ background-color: var(--green-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--green-top) !important; }
+.colorbox.prelims{    background-color: var(--amber-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--amber-top) !important; }
+.colorbox.exercise{   background-color: var(--rose-bg) !important;   border-left: 0 !important; border-top: 6px solid var(--rose-top) !important; }
+.colorbox.mains{      background-color: var(--violet-bg) !important; border-left: 0 !important; border-top: 6px solid var(--violet-top) !important; }
+.colorbox.recall{     background-color: var(--slate-bg) !important;  border-left: 0 !important; border-top: 6px solid var(--slate-top) !important; }
+.colorbox.recap{      background-color: var(--sky-bg) !important;    border-left: 0 !important; border-top: 6px solid var(--sky-top) !important; }
 
 /* Heading chips inside boxes */
 .colorbox > h2, .colorbox > h3, .colorbox > h4, .colorbox > h5, .colorbox > h6{
@@ -229,11 +290,11 @@ body{
   border-radius: 12px;
   margin: 0 0 8px 0;
   border: 1px solid rgba(15,36,51,.10);
-  background: rgba(255,255,255,.60);
+  background: rgba(255,255,255,.62);
   font-weight: 950;
 }
 
-/* ---------- Tables ---------- */
+/* Tables -> grid (splittable, page-safe) */
 .gridtable{
   display:block;
   width: 100%;
@@ -243,6 +304,9 @@ body{
   overflow: visible;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+
+  page-break-inside: avoid;
+  break-inside: avoid;
 }
 .gridtable .gt-row{ display:block; }
 .gridtable .gt-cell{
@@ -263,7 +327,7 @@ body{
   letter-spacing: .02em;
 }
 
-/* Page-break helper (injected as <div class="page-break"></div>) */
+/* Page break helper */
 .page-break{
   height: 0;
   margin: 0;
@@ -275,7 +339,7 @@ body{
 
 
 # ============================================================
-# Playwright setup (Streamlit Cloud)
+# 2) Playwright setup (Streamlit Cloud)
 # ============================================================
 @st.cache_resource
 def ensure_playwright_chromium():
@@ -283,14 +347,21 @@ def ensure_playwright_chromium():
 
 
 # ============================================================
-# Markdown cleanup: remove {#...} etc from headings
+# 3) Markdown cleanup + heading normalization (remove {#...} etc)
 # ============================================================
+INDEX_TITLES = {"index", "contents", "table of contents", "toc"}
+
 def cleanup_markdown(md_text: str) -> str:
+    # Remove empty headings
     md_text = re.sub(r"(?m)^\s*#{1,6}\s*$\n?", "", md_text)
+
+    # Remove trailing heading attribute blocks like:  ## Title {#id}
     md_text = re.sub(r"(?m)^(#{1,6}\s+.*?)(\s*\{[^{}]*\})\s*$", r"\1", md_text)
+
+    # Unescape punctuation (helps with odd artifacts)
     md_text = re.sub(r"\\([\\`*_{}\[\]()#+\-.!|>~])", r"\1", md_text)
 
-    # ensure blank line after table row if next line is a heading
+    # Ensure blank line after table row if next line is a heading
     lines = md_text.splitlines()
     out = []
     for i, line in enumerate(lines):
@@ -302,29 +373,29 @@ def cleanup_markdown(md_text: str) -> str:
                     out.append("")
     return "\n".join(out)
 
-
 def heading_text(tag) -> str:
     return re.sub(r"\s+", " ", tag.get_text(" ", strip=True)).strip()
-
 
 def strip_heading_codes(text: str) -> str:
     if not text:
         return ""
     t = re.sub(r"\s+", " ", text).strip()
+    # Remove inline blocks like {#id} or {something}
     t = re.sub(r"\{[#:.][^{}]*\}", "", t).strip()
     t = re.sub(r"\s*\{[^{}]*\}\s*$", "", t).strip()
     return t
 
-
 def normalize_heading(s: str) -> str:
-    s = re.sub(r"\s+", " ", (s or "").strip())
-    s = strip_heading_codes(s)
+    s = strip_heading_codes(s or "")
+    s = re.sub(r"\s+", " ", s).strip()
+    # remove leading numbering styles: "1. ", "1) ", "(1) ", "I. "
     s = re.sub(r"^\(?\s*(\d{1,2}|[ivxlcdm]{1,8})\s*[\.\)\:\-]\s*", "", s, flags=re.I)
     return s.strip().lower()
 
-
 def classify_section(title: str) -> str | None:
     t = normalize_heading(title)
+
+    # Your standard headers going ahead
     if "syllabus mapping" in t:
         return "syllabus"
     if "the context" in t or "why in news" in t:
@@ -345,15 +416,16 @@ def classify_section(title: str) -> str | None:
         return "recall"
     if "recap" in t:
         return "recap"
+
     return None
 
-
 def is_topic_title(h) -> bool:
+    # Topic title: H2 that is NOT a standard section heading
     return h.name == "h2" and heading_text(h) != "" and classify_section(heading_text(h)) is None
 
 
 # ============================================================
-# Tables -> gridtables (splittable)
+# 4) Tables → gridtables (splittable)
 # ============================================================
 def tables_to_gridtables(soup: BeautifulSoup) -> None:
     def append_fragment(tag, fragment_html: str):
@@ -402,37 +474,32 @@ def tables_to_gridtables(soup: BeautifulSoup) -> None:
 
 
 # ============================================================
-# Images normalization
+# 5) Images: wrap + prevent any forced sizing
 # ============================================================
 def normalize_images(soup: BeautifulSoup) -> None:
     for img in soup.find_all("img"):
+        # Remove any converter-injected sizing
         for attr in ("width", "height", "style"):
             if img.has_attr(attr):
                 del img[attr]
 
-        alt = (img.get("alt") or "").lower()
-        if any(k in alt for k in ["icon", "logo", "emoji", "small"]):
-            img["data-natural"] = "small"
-
+        # Wrap in figure (for padding/background + center alignment)
         if not (img.parent and img.parent.name == "figure"):
             fig = soup.new_tag("figure", **{"class": "md-figure"})
             img.wrap(fig)
 
 
 # ============================================================
-# Page breaks after Index and before topics
+# 6) Page break after Index/Contents section
 # ============================================================
-INDEX_TITLES = {"index", "contents", "table of contents", "toc"}
-
 def insert_pagebreak_after_index(soup: BeautifulSoup) -> None:
-    # Find a heading that matches "Index" / "Contents" / "TOC"
-    for h in soup.find_all(["h1","h2","h3","h4","h5","h6"]):
+    # Find a heading matching Index / Contents / TOC
+    for h in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
         t = normalize_heading(heading_text(h))
         if t in INDEX_TITLES:
-            # Insert a page-break right AFTER the index block (until next heading of same/higher level)
             pb = soup.new_tag("div", **{"class": "page-break"})
-            # Find next heading sibling in document order and insert before it
-            nxt = h.find_next(lambda tag: tag.name in ["h1","h2","h3","h4","h5","h6"] and tag is not h)
+            # Insert before the next heading (any level)
+            nxt = h.find_next(lambda tag: getattr(tag, "name", None) in ["h1","h2","h3","h4","h5","h6"] and tag is not h)
             if nxt:
                 nxt.insert_before(pb)
             else:
@@ -441,10 +508,10 @@ def insert_pagebreak_after_index(soup: BeautifulSoup) -> None:
 
 
 # ============================================================
-# Wrap sections + topic tagging + clean heading codes
+# 7) Wrap sections in color boxes + tag topics + clean heading text
 # ============================================================
 def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
-    # Clean heading text
+    # Clean heading displayed text (remove {#...} etc)
     for h in soup.find_all(["h1","h2","h3","h4","h5","h6"]):
         cleaned = strip_heading_codes(heading_text(h))
         h.clear()
@@ -480,8 +547,10 @@ def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
             nxt = cur.next_sibling
 
             if cur is not start_h:
+                # Stop at HR
                 if getattr(cur, "name", None) == "hr":
                     break
+                # Stop when next major block begins
                 if is_heading(cur) and (is_topic_heading(cur) or is_section_heading(cur)):
                     break
 
@@ -497,19 +566,79 @@ def wrap_sections_and_tag_topics(soup: BeautifulSoup) -> None:
 
 
 # ============================================================
-# MD -> full HTML
+# 8) Optional: inline local images as data URIs (no MD changes)
+#    - Helps when users upload MD + images in same folder.
+#    - If image paths aren't accessible, it leaves them unchanged.
 # ============================================================
-def md_to_full_html(md_text: str, title_fallback: str) -> str:
+def inline_local_images(soup: BeautifulSoup, base_dir: Path | None) -> None:
+    if base_dir is None:
+        return
+
+    for img in soup.find_all("img"):
+        src = img.get("src") or ""
+        if not src or src.startswith(("http://", "https://", "data:")):
+            continue
+
+        # Resolve local paths
+        src_path = (base_dir / src).resolve()
+        if not src_path.exists() or not src_path.is_file():
+            continue
+
+        ext = src_path.suffix.lower()
+        mime = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".webp": "image/webp",
+            ".gif": "image/gif",
+            ".svg": "image/svg+xml",
+        }.get(ext, None)
+        if mime is None:
+            continue
+
+        try:
+            data = src_path.read_bytes()
+            b64 = base64.b64encode(data).decode("utf-8")
+            img["src"] = f"data:{mime};base64,{b64}"
+        except Exception:
+            pass
+
+
+# ============================================================
+# 9) Markdown → full HTML
+# ============================================================
+def md_to_full_html(md_text: str, title_fallback: str, md_filename: str | None = None) -> str:
     md_text = cleanup_markdown(md_text)
 
-    body_html = mdlib.markdown(md_text, extensions=["tables"])
+    body_html = render_markdown(md_text)
     soup = BeautifulSoup(body_html, "html.parser")
 
+    # Convert tables
     tables_to_gridtables(soup)
+
+    # Wrap sections + topics + clean headings
     wrap_sections_and_tag_topics(soup)
+
+    # Normalize image tags (wrap + remove sizing)
     normalize_images(soup)
+
+    # Page break after Index
     insert_pagebreak_after_index(soup)
 
+    # Attempt to inline local images if possible (only works if the files exist server-side)
+    # In Streamlit Cloud, uploaded MD doesn't include companion images unless you also upload them.
+    base_dir = None
+    if md_filename:
+        # If the md is a real path, base_dir is its folder; for uploads, not available.
+        try:
+            p = Path(md_filename)
+            if p.exists():
+                base_dir = p.parent
+        except Exception:
+            base_dir = None
+    inline_local_images(soup, base_dir)
+
+    # Document title
     h1 = soup.find("h1")
     doc_title = (h1.get_text(" ", strip=True).upper() if h1 else title_fallback.upper())
 
@@ -535,7 +664,7 @@ def md_to_full_html(md_text: str, title_fallback: str) -> str:
 
 
 # ============================================================
-# HTML -> PDF (Playwright)
+# 10) HTML → PDF bytes (Playwright)
 # ============================================================
 def html_to_pdf_bytes(full_html: str) -> bytes:
     from playwright.sync_api import sync_playwright
@@ -547,17 +676,20 @@ def html_to_pdf_bytes(full_html: str) -> bytes:
 
         with sync_playwright() as p:
             browser = p.chromium.launch()
+            # Higher scale helps text crispness; images remain their true pixels (no forced upscaling)
             context = browser.new_context(device_scale_factor=2)
             page = context.new_page()
             page.goto(html_path.as_uri(), wait_until="networkidle")
             page.emulate_media(media="print")
 
+            # Let @page margins apply
             pdf_bytes = page.pdf(
                 format="A4",
                 print_background=True,
                 prefer_css_page_size=True,
-                margin={"top": "10mm", "bottom": "10mm", "left": "9mm", "right": "9mm"},
+                margin={"top": "0mm", "bottom": "0mm", "left": "0mm", "right": "0mm"},
             )
+
             browser.close()
 
         return pdf_bytes
@@ -567,7 +699,7 @@ def html_to_pdf_bytes(full_html: str) -> bytes:
 # UI
 # ============================================================
 st.title("Nirnay Daily CA — Markdown to HTML + PDF (Single Column)")
-st.caption("Upload a .md file → get consistent Nirnay single-column HTML and PDF downloads.")
+st.caption("Upload a .md file → consistent Nirnay HTML + PDF (no MD edits required).")
 
 uploaded = st.file_uploader("Upload Markdown file", type=["md", "markdown"])
 
